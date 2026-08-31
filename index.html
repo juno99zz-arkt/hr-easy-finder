@@ -195,13 +195,15 @@
   .bcol { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; }
   .bcol .bw { flex:1; width:100%; display:flex; align-items:flex-end; }
   .bcol .bf { width:100%; background:var(--accent); border-radius:4px 4px 0 0; min-height:2px; }
-  .bcol .bv { font-size:10px; font-family:"IBM Plex Mono",monospace; color:var(--text-dim); }
+  .bcol .bv { font-size:10px; font-family:"IBM Plex Mono",monospace; color:var(--text-dim); text-align:center; line-height:1.3; }
+  .bcol .bv .bpct { color:var(--accent-strong); font-weight:600; }
   .bcol .bl { font-size:10px; color:var(--text-dim); text-align:center; line-height:1.25; }
 
   .dtable { width:100%; min-width:0; border-collapse:collapse; font-size:12.5px; table-layout:fixed; }
   .dtable th, .dtable td { border:1px solid var(--border); padding:6px 10px; text-align:left; white-space:normal; }
   .dtable th { background:var(--surface-2); color:var(--text-dim); font-weight:700; }
   .dtable td.n { font-family:"IBM Plex Mono",monospace; text-align:right; }
+  .dtable tr.drow-total td { background:var(--surface-2); font-weight:700; color:var(--text); }
   .dnote { font-size:12px; color:var(--text-dim); line-height:1.65; }
 </style>
 
@@ -558,21 +560,58 @@ function rowsFromGrid(grid){
   return { rows, meta:{ year, month } };
 }
 
+/* ---- 불러온 데이터 브라우저 저장 (IndexedDB) — 다음 방문에도 자동 적용 ---- */
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    const rq = indexedDB.open("hrfinder", 1);
+    rq.onupgradeneeded = ()=> rq.result.createObjectStore("kv");
+    rq.onsuccess = ()=> res(rq.result);
+    rq.onerror = ()=> rej(rq.error);
+  });
+}
+async function idbSet(key,val){
+  const db = await idbOpen();
+  return new Promise((res,rej)=>{ const tx=db.transaction("kv","readwrite");
+    tx.objectStore("kv").put(val,key); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); });
+}
+async function idbGet(key){
+  const db = await idbOpen();
+  return new Promise((res,rej)=>{ const tx=db.transaction("kv","readonly");
+    const rq=tx.objectStore("kv").get(key); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); });
+}
+async function idbDel(key){
+  const db = await idbOpen();
+  return new Promise((res,rej)=>{ const tx=db.transaction("kv","readwrite");
+    tx.objectStore("kv").delete(key); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); });
+}
+
 /* ---- 로더 UI ---- */
 function setSampleStatus(){
   document.getElementById("loadStatus").innerHTML =
-    "현재: <b>샘플 데이터</b> ("+DB.rows.length.toLocaleString("ko-KR")+"명) · 실제 39컬럼 파일(xlsx·csv)을 불러오면 모든 항목 필터가 활성화됩니다.";
+    "현재: <b>샘플 데이터</b> ("+DB.rows.length.toLocaleString("ko-KR")+"명) · 실제 39컬럼 파일(xlsx·csv)을 불러오면 직책·국적 등 모든 항목 필터·대시보드가 활성화됩니다.";
 }
+function loadedStatus(name, autoloaded){
+  const detected = ALL_KEYS.filter(k=>DB.has(k)).length;
+  document.getElementById("loadStatus").innerHTML =
+    (autoloaded ? "저장된 파일: " : "불러온 파일: ") + "<b>"+esc(name)+"</b> ("+DB.rows.length.toLocaleString("ko-KR")+
+    "명 · "+detected+"개 항목 인식" + (autoloaded ? ", 자동 불러옴" : ", 다음 방문에도 자동 적용") +
+    ") · <button class='linkbtn' id='btnRevert'>샘플로 되돌리기</button>";
+  document.getElementById("btnRevert").addEventListener("click", clearAndRevert);
+}
+function clearAndRevert(){ idbDel("data").catch(()=>{}); loadSample(); afterDataChange(); setSampleStatus(); }
+
 function afterDataChange(){
+  dashboardBuilt = false;
   buildUnivIndex();
   S = blankState(); unparsed = ""; includeLeave = false;
   buildControls(); syncControls();
-  document.getElementById("stTotal").textContent = DB.rows.length.toLocaleString("ko-KR")+"명";
-  document.getElementById("stMonth").textContent = DB.meta.year+"-"+String(DB.meta.month).padStart(2,"0");
+  const el = id => document.getElementById(id);
+  if (el("stTotal")) el("stTotal").textContent = DB.rows.length.toLocaleString("ko-KR")+"명";
+  if (el("stMonth")) el("stMonth").textContent = DB.meta.year+"-"+String(DB.meta.month).padStart(2,"0");
   document.querySelectorAll("#scopeSeg button").forEach(b=>{ const on=b.dataset.leave==="0";
     b.classList.toggle("active",on); b.setAttribute("aria-pressed",String(on)); });
-  document.getElementById("q").value="";
-  dashboardBuilt = false;
+  if (el("q")) el("q").value="";
+  if (el("dash") && el("dash").classList.contains("on")) buildDashboard();
   runSearch();
 }
 async function handleFile(file){
@@ -585,9 +624,8 @@ async function handleFile(file){
       : await parseXlsx(await file.arrayBuffer());
     finalize(parsed.rows, true, { src:file.name, year:parsed.meta.year, month:parsed.meta.month });
     afterDataChange();
-    st.innerHTML = "불러온 파일: <b>"+esc(file.name)+"</b> ("+DB.rows.length.toLocaleString("ko-KR")+
-      "명) · 모든 항목 필터 활성화 · <button class='linkbtn' id='btnRevert'>샘플로 되돌리기</button>";
-    document.getElementById("btnRevert").addEventListener("click", ()=>{ loadSample(); afterDataChange(); setSampleStatus(); });
+    idbSet("data", { rows: DB.rows, meta: DB.meta }).catch(()=>{});
+    loadedStatus(file.name, false);
   } catch(e){
     st.innerHTML = "<span style='color:var(--warn)'>불러오기 실패: "+esc(e&&e.message?e.message:String(e))+"</span> · <button class='linkbtn' id='btnRevert'>샘플 유지</button>";
     const rb=document.getElementById("btnRevert"); if (rb) rb.addEventListener("click", setSampleStatus);
@@ -800,10 +838,11 @@ function readControls(){
 
 /* ================= 필터 실행 ================= */
 function buildQuery(){
-  const t=[], chips=[], parts=[];
+  const t=[], chips=[], parts=[], missing=[];
 
   F_MULTI.forEach(f=>{
     const sel = S[f.k]; if (!sel || !sel.size) return;
+    if (!DB.has(f.k)){ missing.push(f.label); return; }
     const set = new Set(sel); const wantNone = f.withNone && set.has("_none"); if (wantNone) set.delete("_none");
     t.push(r=>{ const v=r[f.k]; if (set.has(v)) return true; if (wantNone && (v===""||v==null)) return true; return false; });
     const disp = [...sel].map(x=> x==="_none" ? f.withNone : (f.k==="사업부" ? ((DIV_ALIAS.find(d=>d[0]===x)||[])[2]||x) : x));
@@ -812,22 +851,23 @@ function buildQuery(){
 
   F_RADIO.forEach(f=>{
     const v = S[f.k]; if (!v) return;
+    if (!DB.has(f.k)){ missing.push(f.label); return; }
     if (v==="_none"){ t.push(r=> r[f.k]===""||r[f.k]==null); chips.push(f.label+": 비파견"); parts.push("비파견"); }
     else { t.push(r=> r[f.k]===v); chips.push(f.label+": "+v); parts.push(v); }
   });
 
-  const range=(k,label,get,unit)=>{
+  const range=(k,label,get,unit,src)=>{
     const mn=S[k+"Min"], mx=S[k+"Max"];
     const hasMn = mn!==""&&mn!=null, hasMx = mx!==""&&mx!=null;
+    if (!hasMn && !hasMx) return;
+    if (src && !DB.has(src)){ missing.push(label); return; }
     if (hasMn) t.push(r=>{ const v=get(r); return v!=null && v>=+mn; });
     if (hasMx) t.push(r=>{ const v=get(r); return v!=null && v<=+mx; });
-    if (hasMn||hasMx){
-      chips.push(label+": "+(hasMn?mn:"")+(hasMn&&hasMx?"~":"")+(hasMx?mx:"")+(unit||"")+(hasMn&&!hasMx?" 이상":"")+(!hasMn&&hasMx?" 이하":""));
-      parts.push(label+(hasMn?mn:"")+"-"+(hasMx?mx:""));
-    }
+    chips.push(label+": "+(hasMn?mn:"")+(hasMn&&hasMx?"~":"")+(hasMx?mx:"")+(unit||"")+(hasMn&&!hasMx?" 이상":"")+(!hasMn&&hasMx?" 이하":""));
+    parts.push(label+(hasMn?mn:"")+"-"+(hasMx?mx:""));
   };
-  F_RANGE.forEach(f=> range(f.k, f.label, f.get, f.unit));
-  F_YEAR.forEach(f=> range(f.k, f.label, f.get, ""));
+  F_RANGE.forEach(f=> range(f.k, f.label, f.get, f.unit, f.src));
+  F_YEAR.forEach(f=> range(f.k, f.label, f.get, "", f.src));
 
   if (S["전공"]){ t.push(r=> r.전공===S["전공"]); chips.push("전공: "+S["전공"]); parts.push(S["전공"]); }
   if (S["학교"]){ t.push(r=> r.학교===S["학교"]); chips.push("출신학교: "+S["학교"]); parts.push(String(S["학교"]).replace(/\(.*\)/,"")); }
@@ -842,7 +882,7 @@ function buildQuery(){
   if (S.status){ t.push(r=> r.재직상태===S.status); chips.push("재직상태: "+S.status); parts.push(S.status); }
   else if (!includeLeave && t.length){ t.push(r=> r.재직상태==="재직"); chips.push("재직자만 (휴직 제외)"); }
 
-  return { tests:t, chips, label: parts.join("_") };
+  return { tests:t, chips, label: parts.join("_"), missing };
 }
 
 /* ================= 결과 렌더 ================= */
@@ -917,7 +957,7 @@ function showDlError(msg){
 }
 
 function runSearch(){
-  const { tests, chips, label } = buildQuery();
+  const { tests, chips, label, missing } = buildQuery();
   const R = document.getElementById("results");
   const cb = document.getElementById("chipbox");
   const st = document.getElementById("stResult");
@@ -927,9 +967,12 @@ function runSearch(){
   } else { cb.style.display="none"; document.getElementById("chiplist").innerHTML=""; }
 
   const w = document.getElementById("warn");
-  if (unparsed){ w.className="warnbox on";
-    w.textContent = '"'+unparsed+'" 은(는) 조건으로 인식하지 못했습니다. 아래 상세조건에서 직접 지정해주세요.'; }
-  else w.className="warnbox";
+  const msgs = [];
+  if (missing && missing.length)
+    msgs.push("‘"+missing.join("’, ‘")+"’ 조건은 현재 데이터(샘플)에 없어 적용되지 않았습니다. 우측 상단 ‘📄 내 엑셀 불러오기’로 실제 39컬럼 파일을 불러오면 사용할 수 있습니다.");
+  if (unparsed) msgs.push('"'+unparsed+'" 은(는) 조건으로 인식하지 못했습니다. 아래 상세조건에서 직접 지정해주세요.');
+  if (msgs.length){ w.className="warnbox on"; w.textContent = msgs.join(" / "); }
+  else { w.className="warnbox"; w.textContent = ""; }
 
   if (!tests.length){
     lastRows=[]; lastLabel=""; st.textContent="-";
@@ -1000,15 +1043,18 @@ function legendHTML(pairs){
 function pieCard(title, pairs){ return '<div class="dcard"><h3>'+title+'</h3><div class="chart">'+donutSVG(pairs)+legendHTML(pairs)+'</div></div>'; }
 function barCard(title, avgLabel, pairs){
   const max = Math.max(...pairs.map(p=>p[1])) || 1;
+  const total = pairs.reduce((s,p)=>s+p[1],0) || 1;
   const cols = pairs.map(p=>
-    '<div class="bcol"><div class="bv">'+p[1].toLocaleString("ko-KR")+'</div>'+
+    '<div class="bcol"><div class="bv">'+p[1].toLocaleString("ko-KR")+'<br><span class="bpct">'+(p[1]/total*100).toFixed(1)+'%</span></div>'+
     '<div class="bw"><div class="bf" style="height:'+(p[1]/max*100).toFixed(1)+'%"></div></div>'+
     '<div class="bl">'+esc(p[0])+'</div></div>').join("");
   return '<div class="dcard"><h3>'+title+'</h3>'+(avgLabel?'<div class="avg">'+avgLabel+'</div>':'')+'<div class="bars">'+cols+'</div></div>';
 }
 function tableCard(title, pairs, note){
-  return '<div class="dcard"><h3>'+title+'</h3><table class="dtable"><thead><tr><th>구분</th><th>인원</th></tr></thead><tbody>'+
-    pairs.map(p=>'<tr><td>'+esc(p[0])+'</td><td class="n">'+p[1].toLocaleString("ko-KR")+'</td></tr>').join("")+
+  const total = pairs.reduce((s,p)=>s+p[1],0) || 1;
+  return '<div class="dcard"><h3>'+title+'</h3><table class="dtable"><thead><tr><th>구분</th><th>인원</th><th>비중</th></tr></thead><tbody>'+
+    pairs.map(p=>'<tr><td>'+esc(p[0])+'</td><td class="n">'+p[1].toLocaleString("ko-KR")+'</td><td class="n">'+(p[1]/total*100).toFixed(1)+'%</td></tr>').join("")+
+    '<tr class="drow-total"><td>합계</td><td class="n">'+total.toLocaleString("ko-KR")+'</td><td class="n">100.0%</td></tr>'+
     '</tbody></table>'+(note?'<div class="dnote" style="margin-top:10px">'+note+'</div>':'')+'</div>';
 }
 let dashboardBuilt = false;
@@ -1153,6 +1199,16 @@ function wireScope(){
     runSearch();
   }));
 }
+async function restoreSaved(){
+  try{
+    const saved = await idbGet("data");
+    if (saved && saved.rows && saved.rows.length){
+      finalize(saved.rows, true, saved.meta || {});
+      afterDataChange();
+      loadedStatus((saved.meta && saved.meta.src) || "내 데이터", true);
+    }
+  } catch(e){ /* IndexedDB 미지원/차단 시 샘플 유지 */ }
+}
 function init(){
   loadSample();
   buildUnivIndex();
@@ -1180,6 +1236,7 @@ function init(){
   document.getElementById("btnLoad").addEventListener("click", ()=>document.getElementById("fileInput").click());
   document.getElementById("fileInput").addEventListener("change", e=>{ const f=e.target.files[0]; if (f) handleFile(f); e.target.value=""; });
   runSearch();
+  restoreSaved();
 }
 try { init(); }
 catch(e){
