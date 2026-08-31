@@ -145,6 +145,49 @@
 
   .foot { margin-top:36px; font-size:12px; color:var(--text-dim); line-height:1.7; }
   @media (max-width:640px){ .searchrow{flex-direction:column;} .btncol{flex-direction:row;} }
+
+  /* ===== 전사 대시보드 / 프로필 ===== */
+  .dashbtn { display:block; width:100%; margin:0 0 24px; padding:14px 18px; border-radius:12px;
+    border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent-strong);
+    font-family:"Gothic A1","Noto Sans KR",sans-serif; font-weight:800; font-size:15px; cursor:pointer;
+    text-align:left; box-shadow:var(--shadow); }
+  .dashbtn:hover { background:var(--accent); color:#fff; }
+  .dashbtn span { float:right; font-weight:700; }
+
+  .dash { position:fixed; inset:0; z-index:60; background:var(--bg); overflow-y:auto; display:none; }
+  .dash.on { display:block; }
+  .dash-in { max-width:1160px; margin:0 auto; padding:30px 22px 70px; }
+  .dash-head { display:flex; justify-content:space-between; align-items:baseline; gap:16px;
+    margin-bottom:22px; flex-wrap:wrap; }
+  .dash-head h2 { font-family:"Gothic A1","Noto Sans KR",sans-serif; font-weight:800; font-size:24px; margin:0; }
+  .dash-head .meta { color:var(--text-dim); font-size:13px; }
+
+  .dgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+  .dcard { background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:16px 18px; box-shadow:var(--shadow); }
+  .dcard h3 { margin:0 0 3px; font-family:"Gothic A1","Noto Sans KR",sans-serif; font-size:14.5px; }
+  .dcard .avg { font-size:12px; color:var(--text-dim); margin-bottom:12px; }
+  .dcard .avg b { font-family:"IBM Plex Mono",monospace; color:var(--accent-strong); }
+
+  .chart { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .chart svg { flex:none; }
+  .legend { font-size:11.5px; line-height:1.85; flex:1; min-width:150px; }
+  .legend .lg span { display:inline-block; width:10px; height:10px; border-radius:2px;
+    margin-right:6px; vertical-align:middle; }
+  .legend .lg b { font-family:"IBM Plex Mono",monospace; }
+
+  .bars { display:flex; gap:5px; align-items:flex-end; height:160px; margin-top:6px; }
+  .bcol { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; }
+  .bcol .bw { flex:1; width:100%; display:flex; align-items:flex-end; }
+  .bcol .bf { width:100%; background:var(--accent); border-radius:4px 4px 0 0; min-height:2px; }
+  .bcol .bv { font-size:10px; font-family:"IBM Plex Mono",monospace; color:var(--text-dim); }
+  .bcol .bl { font-size:10px; color:var(--text-dim); text-align:center; line-height:1.25; }
+
+  .dtable { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .dtable th, .dtable td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+  .dtable th { background:var(--surface-2); color:var(--text-dim); font-weight:700; }
+  .dtable td.n { font-family:"IBM Plex Mono",monospace; text-align:right; }
+  .dnote { font-size:12px; color:var(--text-dim); line-height:1.65; }
 </style>
 
 <div class="shell">
@@ -159,6 +202,8 @@
     <div class="tile"><div class="l">기준 시점</div><div class="v">2026-08</div></div>
     <div class="tile accent"><div class="l">현재 검색결과</div><div class="v" id="stResult">-</div></div>
   </div>
+
+  <button class="dashbtn" id="btnDash">📊 전사 인력 대시보드 열기<span>→</span></button>
 
   <div class="card">
     <div class="tabbar" role="tablist">
@@ -188,6 +233,19 @@
   <div class="chips" id="chipbox" style="display:none">
     <div class="h">현재 적용된 조건</div>
     <div id="chiplist"></div>
+  </div>
+
+  <div class="dash" id="dash" role="dialog" aria-modal="true" aria-label="전사 인력 대시보드">
+    <div class="dash-in">
+      <div class="dash-head">
+        <div>
+          <h2>전사 인력 대시보드</h2>
+          <div class="meta" id="dashMeta">전체 인력 기준 · 2026-08</div>
+        </div>
+        <button class="btn btn-ghost" id="btnDashClose">닫기 (Esc)</button>
+      </div>
+      <div class="dgrid" id="dashGrid"></div>
+    </div>
   </div>
 
   <div id="results"></div>
@@ -596,7 +654,8 @@ function runSearch(){
   }
 
   let h='<div class="rsum"><div class="c">검색결과 <b>'+rows.length.toLocaleString("ko-KR")+'</b>명</div>'+
-        '<div class="actions"><button class="btn btn-primary" id="btnDl">엑셀(CSV) 다운로드</button></div></div>';
+        '<div class="actions"><button class="btn btn-ghost" id="btnProfile">프로필 문서 생성</button>'+
+        '<button class="btn btn-primary" id="btnDl">엑셀(CSV) 다운로드</button></div></div>';
 
   if (rows.length<=20){
     h += tableHTML(rows);
@@ -607,6 +666,7 @@ function runSearch(){
   }
   R.innerHTML=h;
   document.getElementById("btnDl").addEventListener("click", doDownload);
+  document.getElementById("btnProfile").addEventListener("click", makeProfiles);
 }
 
 /* ---------- CSV 다운로드 ---------- */
@@ -621,25 +681,24 @@ function fileLabel(){
   let l=(lastLabel||"전체조건").replace(/[\\/:*?"<>|]/g,"").replace(/\s+/g,"");
   return l.length>90 ? l.slice(0,90) : l;
 }
+/* Claude 앱 안에서는 downloads 기능을, 그 외(웹/GitHub Pages)에서는 표준 브라우저 다운로드를 쓴다. */
+async function saveFile(filename, data, mime){
+  const dl = (window.claude && window.claude.use) ? await window.claude.use("downloads") : null;
+  if (dl){ await dl.save({ filename: filename, data: data }); return; }
+  const blob = new Blob([data], { type: mime || "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
 async function doDownload(){
   const btn=document.getElementById("btnDl");
   const orig=btn.textContent;
   if (!lastRows.length) return;
   btn.disabled=true; btn.textContent="준비 중...";
   try{
-    const filename = "인력list_"+fileLabel()+".csv";
-    const csv = toCSV(lastRows);
-    const dl = (window.claude && window.claude.use) ? await window.claude.use("downloads") : null;
-    if (dl){
-      await dl.save({ filename: filename, data: csv });
-    } else {
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
-    }
+    await saveFile("인력list_"+fileLabel()+".csv", toCSV(lastRows), "text/csv;charset=utf-8");
   } catch(e){
     const c=e&&e.code;
     if (c==="declined") { /* 사용자가 취소 */ }
@@ -651,6 +710,168 @@ async function doDownload(){
 function showDlError(msg){
   const w=document.getElementById("warn"); w.className="warnbox on"; w.textContent=msg;
   w.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+/* ===================== 전사 인력 대시보드 ===================== */
+const PIE = ["#0E7A78","#4FB0AC","#2A6F97","#E8A44C","#C1666B","#7D5BA6","#A7D3CF",
+  "#8AB6D6","#5C8001","#B0A160","#6B7280","#D98E73"];
+
+function tally(keyFn){
+  const m = new Map();
+  for (const r of DB.rows){ const k = keyFn(r); if (k==null) continue; m.set(k,(m.get(k)||0)+1); }
+  return [...m.entries()].sort((a,b)=>b[1]-a[1]);
+}
+function topN(pairs, n){
+  if (pairs.length<=n) return pairs;
+  const rest = pairs.slice(n).reduce((s,p)=>s+p[1],0);
+  return [...pairs.slice(0,n), ["기타", rest]];
+}
+function jobFamily(deptStr){
+  for (const k of DEPT_KW) if (String(deptStr).indexOf(k)>=0) return k;
+  return "기타";
+}
+
+function donutSVG(pairs){
+  const total = pairs.reduce((s,p)=>s+p[1],0) || 1;
+  const cx=70, cy=70, R=60, ri=38;
+  let a0 = -Math.PI/2, paths="";
+  if (pairs.length===1){
+    paths = '<circle cx="'+cx+'" cy="'+cy+'" r="'+((R+ri)/2)+'" fill="none" stroke="'+PIE[0]+'" stroke-width="'+(R-ri)+'"/>';
+  } else {
+    pairs.forEach((p,i)=>{
+      let a1 = (i===pairs.length-1) ? (-Math.PI/2 + 2*Math.PI) : (a0 + (p[1]/total)*2*Math.PI);
+      const big = (a1-a0) > Math.PI ? 1 : 0;
+      const x0=cx+R*Math.cos(a0), y0=cy+R*Math.sin(a0);
+      const x1=cx+R*Math.cos(a1), y1=cy+R*Math.sin(a1);
+      const u1=cx+ri*Math.cos(a1), v1=cy+ri*Math.sin(a1);
+      const u0=cx+ri*Math.cos(a0), v0=cy+ri*Math.sin(a0);
+      paths += '<path d="M'+x0.toFixed(2)+' '+y0.toFixed(2)+' A'+R+' '+R+' 0 '+big+' 1 '+x1.toFixed(2)+' '+y1.toFixed(2)+
+        ' L'+u1.toFixed(2)+' '+v1.toFixed(2)+' A'+ri+' '+ri+' 0 '+big+' 0 '+u0.toFixed(2)+' '+v0.toFixed(2)+' Z" fill="'+PIE[i%PIE.length]+'"/>';
+      a0 = a1;
+    });
+  }
+  return '<svg viewBox="0 0 140 140" width="132" height="132" role="img">'+paths+'</svg>';
+}
+function legendHTML(pairs){
+  const total = pairs.reduce((s,p)=>s+p[1],0) || 1;
+  return '<div class="legend">'+pairs.map((p,i)=>
+    '<div class="lg"><span style="background:'+PIE[i%PIE.length]+'"></span>'+esc(p[0])+' '+
+    '<b>'+p[1].toLocaleString("ko-KR")+'</b> · '+(p[1]/total*100).toFixed(1)+'%</div>').join("")+'</div>';
+}
+function pieCard(title, pairs){
+  return '<div class="dcard"><h3>'+title+'</h3><div class="chart">'+donutSVG(pairs)+legendHTML(pairs)+'</div></div>';
+}
+function barCard(title, avgLabel, pairs){
+  const max = Math.max(...pairs.map(p=>p[1])) || 1;
+  const cols = pairs.map(p=>
+    '<div class="bcol"><div class="bv">'+p[1].toLocaleString("ko-KR")+'</div>'+
+    '<div class="bw"><div class="bf" style="height:'+(p[1]/max*100).toFixed(1)+'%"></div></div>'+
+    '<div class="bl">'+esc(p[0])+'</div></div>').join("");
+  return '<div class="dcard"><h3>'+title+'</h3>'+(avgLabel?'<div class="avg">'+avgLabel+'</div>':'')+
+    '<div class="bars">'+cols+'</div></div>';
+}
+function tableCard(title, pairs, note){
+  return '<div class="dcard"><h3>'+title+'</h3><table class="dtable"><thead><tr><th>구분</th><th>인원</th></tr></thead><tbody>'+
+    pairs.map(p=>'<tr><td>'+esc(p[0])+'</td><td class="n">'+p[1].toLocaleString("ko-KR")+'</td></tr>').join("")+
+    '</tbody></table>'+(note?'<div class="dnote" style="margin-top:10px">'+note+'</div>':'')+'</div>';
+}
+
+let dashboardBuilt = false;
+function buildDashboard(){
+  const rows = DB.rows, n = rows.length;
+  const avg = (get)=> rows.reduce((s,r)=>s+get(r),0)/n;
+
+  const clP = tally(r=>r[7]).sort((a,b)=>a[0].localeCompare(b[0]));
+  const gradeP = tally(r=>r[6]).sort((a,b)=>a[0].localeCompare(b[0]));
+
+  const ageP = ["20대","30대","40대","50대","60대 이상"].map(b=>[b,0]);
+  for (const r of rows){ const a=r[9]; ageP[a<30?0:a<40?1:a<50?2:a<60?3:4][1]++; }
+
+  const tenP = ["0~4년","5~9년","10~14년","15~19년","20~24년","25~29년","30년 이상"].map(b=>[b,0]);
+  for (const r of rows){ const t=Math.max(0,r[10]); tenP[t<5?0:t<10?1:t<15?2:t<20?3:t<25?4:t<30?5:6][1]++; }
+
+  document.getElementById("dashGrid").innerHTML =
+    pieCard("① 사업부별 비중", tally(r=>DB.divs[r[3]])) +
+    pieCard("② 직급(CL)별 비중", clP) +
+    pieCard("③ 사업장별 비중", tally(r=>DB.camps[r[5]])) +
+    pieCard("④ 대직무별 비중 (상위 10)", topN(tally(r=>jobFamily(DB.depts[r[4]])), 10)) +
+    pieCard("⑤ 최종학력별 비중", tally(r=>DB.edus[r[11]])) +
+    pieCard("⑥ 남녀 비중", tally(r=>r[15])) +
+    pieCard("⑦ 결혼 유무", tally(r=>r[14])) +
+    barCard("⑧ 연령별 분포", '평균 연령 <b>'+avg(r=>r[9]).toFixed(1)+'세</b>', ageP) +
+    barCard("⑨ 그룹근속별 분포", '평균 그룹근속 <b>'+avg(r=>Math.max(0,r[10])).toFixed(1)+'년</b>', tenP) +
+    tableCard("⑩ 직급 상세(CL·호봉)별 인원수", gradeP,
+      "인력DB에 <b>직책</b>(파트장·그룹장 등) 필드가 없어 직급 상세로 대체 표시합니다. DATA에 <b>직책</b> 컬럼이 추가되면 직책별 표로 자동 전환됩니다.") +
+    tableCard("재직 현황", tally(r=>r[16]), null) +
+    '<div class="dcard"><h3>⑪ 외국 국적인력 수</h3><div class="dnote">현재 인력DB에 <b>국적</b> 필드가 없어 집계할 수 없습니다. DATA에 <b>국적</b> 컬럼이 추가되면 이 카드에 표가 자동 생성됩니다.</div></div>';
+  dashboardBuilt = true;
+}
+function openDashboard(){
+  if (!dashboardBuilt) buildDashboard();
+  document.getElementById("dash").classList.add("on");
+  document.body.style.overflow = "hidden";
+  document.getElementById("btnDashClose").focus();
+}
+function closeDashboard(){
+  document.getElementById("dash").classList.remove("on");
+  document.body.style.overflow = "";
+}
+
+/* ===================== 프로필 문서 생성 (Word .doc) ===================== */
+function divShort(full){ const d = DIV_ALIAS.find(x=>x[0]===full); return d ? d[2] : full; }
+function deptShort(s){ return String(s).replace(/\s*\([^()]*\)\s*$/,""); }
+
+function profileTable(rowsArr){
+  const cell = (lines)=> lines.map(esc).join("<br>");
+  let body = "";
+  for (const r of rowsArr){
+    const o = rec(r);
+    const 부서업무 = [divShort(o["사업부명"]), deptShort(o["부서명"]), "직책: (입력)", "대직무: "+jobFamily(DB.depts[r[4]])];
+    const 인적 = [ r[6],
+      r[9]+"세 / "+r[15]+" / "+o["결혼여부"],
+      o["학교(학사)"] || "-",
+      o["전공"] || "-",
+      "그룹근속 "+(+r[10]).toFixed(1)+"년 · 직급년차 "+(+r[8]).toFixed(1)+"년" ];
+    body +=
+      '<tr>'+
+      '<td style="width:110px;height:150px;text-align:center">사진<br><br><b>'+esc(o["성명"])+'</b><br>('+esc(String(o["사번"]))+')</td>'+
+      '<td style="width:150px;text-align:center">'+cell(부서업무)+'</td>'+
+      '<td style="width:160px;text-align:center">'+cell(인적)+'</td>'+
+      '<td>&nbsp;</td>'+
+      '</tr>';
+  }
+  return '<table><thead><tr><th style="width:110px">사진</th><th>부서/업무</th><th>인적사항</th><th>근황/인물평/특이사항</th></tr></thead><tbody>'+body+'</tbody></table>';
+}
+async function makeProfiles(){
+  if (!lastRows.length) return;
+  const CAP = 50;
+  const btn = document.getElementById("btnProfile");
+  if (lastRows.length > CAP){
+    showDlError("검색결과가 "+lastRows.length.toLocaleString("ko-KR")+"명입니다. 프로필 문서 일괄 생성은 "+CAP+"명 이하에서 가능합니다. 조건을 더 좁혀주세요.");
+    return;
+  }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "생성 중...";
+  try{
+    const cond = buildQuery().chips.join(" · ");
+    const html =
+      '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'+
+      '<head><meta charset="utf-8"><style>'+
+      "body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:10pt}"+
+      'h1{font-size:16pt;text-align:center;text-decoration:underline;margin:0 0 4px}'+
+      '.sub{text-align:center;color:#555;font-size:9pt;margin:0 0 16px}'+
+      'table{border-collapse:collapse;width:100%}'+
+      'th,td{border:1px solid #444;padding:6px 8px;vertical-align:middle}'+
+      'th{background:#eee;text-align:center}'+
+      '</style></head><body>'+
+      '<h1>인력 프로필</h1>'+
+      '<p class="sub">'+esc(cond || "전체 조건")+' · 총 '+lastRows.length+'명 · 기준 2026-08 · 가상 인력DB</p>'+
+      profileTable(lastRows)+
+      '</body></html>';
+    await saveFile("프로필_"+fileLabel()+"_"+lastRows.length+"명.doc", "﻿"+html, "application/msword");
+  } catch(e){
+    showDlError("프로필 문서 생성에 실패했습니다"+(e&&e.message?" ("+e.message+")":"")+".");
+  } finally { btn.disabled=false; btn.textContent=orig; }
 }
 
 /* ---------- 초기화 ---------- */
@@ -692,6 +913,9 @@ function init(){
     syncControls(); runSearch(); });
   document.getElementById("q").addEventListener("keydown",e=>{
     if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); doNLSearch(); } });
+  document.getElementById("btnDash").addEventListener("click", openDashboard);
+  document.getElementById("btnDashClose").addEventListener("click", closeDashboard);
+  document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeDashboard(); });
   runSearch();
 }
 
