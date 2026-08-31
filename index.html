@@ -147,12 +147,13 @@
   @media (max-width:640px){ .searchrow{flex-direction:column;} .btncol{flex-direction:row;} }
 
   /* ===== 전사 대시보드 / 프로필 ===== */
-  .dashbtn { display:block; width:100%; margin:0 0 24px; padding:14px 18px; border-radius:12px;
+  .hd { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; flex-wrap:wrap; }
+  .dashbtn { flex:none; margin-top:2px; padding:10px 16px; border-radius:10px;
     border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent-strong);
-    font-family:"Gothic A1","Noto Sans KR",sans-serif; font-weight:800; font-size:15px; cursor:pointer;
-    text-align:left; box-shadow:var(--shadow); }
+    font-family:"Gothic A1","Noto Sans KR",sans-serif; font-weight:800; font-size:13.5px; cursor:pointer;
+    white-space:nowrap; box-shadow:var(--shadow); }
   .dashbtn:hover { background:var(--accent); color:#fff; }
-  .dashbtn span { float:right; font-weight:700; }
+  @media (max-width:640px){ .dashbtn { width:100%; text-align:center; } }
 
   .dash { position:fixed; inset:0; z-index:60; background:var(--bg); overflow-y:auto; display:none; }
   .dash.on { display:block; }
@@ -183,18 +184,21 @@
   .bcol .bv { font-size:10px; font-family:"IBM Plex Mono",monospace; color:var(--text-dim); }
   .bcol .bl { font-size:10px; color:var(--text-dim); text-align:center; line-height:1.25; }
 
-  .dtable { width:100%; border-collapse:collapse; font-size:12.5px; }
-  .dtable th, .dtable td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+  .dtable { width:100%; min-width:0; border-collapse:collapse; font-size:12.5px; table-layout:fixed; }
+  .dtable th, .dtable td { border:1px solid var(--border); padding:6px 10px; text-align:left; white-space:normal; }
   .dtable th { background:var(--surface-2); color:var(--text-dim); font-weight:700; }
   .dtable td.n { font-family:"IBM Plex Mono",monospace; text-align:right; }
   .dnote { font-size:12px; color:var(--text-dim); line-height:1.65; }
 </style>
 
 <div class="shell">
-  <header>
-    <div class="eyebrow">Samsung Display · People Team AI Agent</div>
-    <h1>HR 인력정보 Easy Finder</h1>
-    <div class="subtitle">자연어로 검색하면 문장을 조건으로 해석해 바로 찾아줍니다. 해석이 원하는 것과 다르거나 더 세밀하게 좁히고 싶으면 <b>상세 조건 직접 지정</b> 탭에서 항목을 추가·해제하세요. 두 탭은 같은 검색결과를 공유합니다. 결과가 20명 이하면 화면에 바로 표시됩니다.</div>
+  <header class="hd">
+    <div>
+      <div class="eyebrow">Samsung Display · People Team AI Agent</div>
+      <h1>HR 인력정보 Easy Finder</h1>
+      <div class="subtitle">자연어로 검색하면 문장을 조건으로 해석해 바로 찾아줍니다. 해석이 원하는 것과 다르거나 더 세밀하게 좁히고 싶으면 <b>상세 조건 직접 지정</b> 탭에서 항목을 추가·해제하세요. 두 탭은 같은 검색결과를 공유합니다. 결과가 20명 이하면 화면에 바로 표시됩니다.</div>
+    </div>
+    <button class="dashbtn" id="btnDash">📊 전사 인력 대시보드</button>
   </header>
 
   <div class="stats">
@@ -202,8 +206,6 @@
     <div class="tile"><div class="l">기준 시점</div><div class="v">2026-08</div></div>
     <div class="tile accent"><div class="l">현재 검색결과</div><div class="v" id="stResult">-</div></div>
   </div>
-
-  <button class="dashbtn" id="btnDash">📊 전사 인력 대시보드 열기<span>→</span></button>
 
   <div class="card">
     <div class="tabbar" role="tablist">
