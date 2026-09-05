@@ -205,9 +205,59 @@
   .dtable td.n { font-family:"IBM Plex Mono",monospace; text-align:right; }
   .dtable tr.drow-total td { background:var(--surface-2); font-weight:700; color:var(--text); }
   .dnote { font-size:12px; color:var(--text-dim); line-height:1.65; }
+
+  .lock-screen { position:fixed; inset:0; background:var(--text); display:flex; align-items:center; justify-content:center; z-index:9999; }
+  .lock-box { background:var(--surface); border-radius:16px; padding:36px 32px; width:280px; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,0.3); }
+  .lock-title { font-size:15px; font-weight:700; color:var(--text); margin-bottom:18px; }
+  .lock-input { width:100%; padding:12px 14px; font-size:16px; border:2px solid var(--border); border-radius:8px; text-align:center; letter-spacing:4px; margin-bottom:12px; box-sizing:border-box; }
+  .lock-input:focus { outline:none; border-color:var(--accent); }
+  .lock-btn { width:100%; padding:12px; font-size:14px; font-weight:700; background:var(--accent-strong); color:#fff; border:none; border-radius:8px; cursor:pointer; }
+  .lock-btn:hover { background:var(--accent); }
+  .lock-error { color:#C0392B; font-size:12px; margin-top:10px; display:none; }
 </style>
 
-<div class="shell">
+<div class="lock-screen" id="lockScreen">
+  <div class="lock-box">
+    <div class="lock-title">🔒 비밀번호를 입력하세요</div>
+    <input type="password" class="lock-input" id="lockInput" maxlength="10" inputmode="numeric" autofocus>
+    <button class="lock-btn" id="lockBtn">확인</button>
+    <div class="lock-error" id="lockError">비밀번호가 올바르지 않습니다.</div>
+  </div>
+</div>
+<script>
+(function(){
+  var PW = "8760";
+  function ready(fn){
+    if (document.readyState !== "loading") fn();
+    else document.addEventListener("DOMContentLoaded", fn);
+  }
+  ready(function(){
+    var screen = document.getElementById("lockScreen");
+    var main   = document.getElementById("mainContent");
+    var input  = document.getElementById("lockInput");
+    var btn    = document.getElementById("lockBtn");
+    var errBox = document.getElementById("lockError");
+
+    function unlock(){
+      screen.style.display = "none";
+      main.style.display = "";
+      try { sessionStorage.setItem("hrFinderAuth", "ok"); } catch(e){}
+    }
+    function tryUnlock(){
+      if (input.value === PW) { unlock(); }
+      else { errBox.style.display = "block"; input.value = ""; input.focus(); }
+    }
+    var already = false;
+    try { already = sessionStorage.getItem("hrFinderAuth") === "ok"; } catch(e){}
+    if (already) unlock();
+
+    btn.addEventListener("click", tryUnlock);
+    input.addEventListener("keydown", function(e){ if (e.key === "Enter") tryUnlock(); });
+  });
+})();
+</script>
+
+<div class="shell" id="mainContent" style="display:none;">
   <header class="hd">
     <div>
       <div class="eyebrow">Samsung Display · People Team AI Agent</div>
